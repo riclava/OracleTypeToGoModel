@@ -2,13 +2,17 @@ package cmd
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
+	"fmt"
+	"html/template"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/riclava/oracletypeconverter/pkg/config"
 	"github.com/riclava/oracletypeconverter/pkg/logger"
 	"github.com/riclava/oracletypeconverter/pkg/oracle"
+	"github.com/riclava/oracletypeconverter/pkg/tpl"
 )
 
 type TableMeta struct {
@@ -28,8 +32,12 @@ type ModelMeta struct {
 	Type     string
 }
 type Model struct {
-	Name  string
-	Metas []ModelMeta
+	PackageName string
+	Filename    string
+	Name        string
+	TableName   string
+	ImportTime  bool
+	Metas       []ModelMeta
 }
 
 func fatal(err error) {
@@ -38,6 +46,11 @@ func fatal(err error) {
 
 func runConvert() {
 	conf := config.AutoLoadConfig()
+
+	err := os.MkdirAll(conf.ModelPath, 0755)
+	if err != nil {
+		fatal(err)
+	}
 
 	db, err := oracle.NewOracle(conf)
 	if err != nil {
@@ -66,12 +79,6 @@ func runConvert() {
 		fatal(err)
 	}
 
-	bits, err := json.MarshalIndent(tables, "", "  ")
-	if err != nil {
-		fatal(err)
-	}
-
-	logger.Infof(string(bits))
 	if len(tables) == 0 {
 		logger.Warnf("No table found at current accout, program exit")
 		return
@@ -125,14 +132,24 @@ func runConvert() {
 
 		var modelMetas []ModelMeta
 		model := &Model{
-			Name: metas[0].TableName,
+			PackageName: conf.PackageName,
+			Filename:    fmt.Sprintf("%s.go", path.Join(conf.ModelPath, strings.ToLower(toCamelCase(metas[0].TableName)))),
+			ImportTime:  false,
+			Name:        toPascalCase(metas[0].TableName),
+			TableName:   table,
 		}
 
 		for jdx, meta := range metas {
 			logger.Infof("Process table %v, field[%v]: %v ...", table, jdx, meta.ColumnName)
+			jsonName := ""
+			if conf.UpperCaseJson {
+				jsonName = toPascalCase(meta.ColumnName)
+			} else {
+				jsonName = toCamelCase(meta.ColumnName)
+			}
 			mm := ModelMeta{
 				Name:     toPascalCase(meta.ColumnName),
-				JsonName: toCamelCase(meta.ColumnName),
+				JsonName: jsonName,
 				Type:     "",
 			}
 
@@ -150,6 +167,7 @@ func runConvert() {
 				mm.Type = "[]byte"
 			} else if isTime(meta.DataType) {
 				mm.Type = "time.Time"
+				model.ImportTime = true
 			} else {
 				unsupported = true
 				logger.Warnf("Table %v has unsupported data type %v with name %v", table, meta.DataType, meta.ColumnName)
@@ -166,12 +184,23 @@ func runConvert() {
 
 		model.Metas = modelMetas
 
-		bits, err := json.MarshalIndent(model, "", "  ")
+		templateStr := tpl.GetByFilename("default.tpl")
+		tmpl, err := template.New("default").Parse(templateStr)
 		if err != nil {
 			fatal(err)
 		}
 
-		logger.Infof("Table: %v \n%v\n", table, string(bits))
+		file, err := os.Create(model.Filename)
+		if err != nil {
+			fatal(err)
+		}
+		defer file.Close()
+
+		err = tmpl.Execute(file, model)
+		if err != nil {
+			fatal(err)
+		}
+		logger.Infof("========================================")
 	}
 }
 

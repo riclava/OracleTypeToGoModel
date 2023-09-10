@@ -8,12 +8,16 @@ import (
 )
 
 type Config struct {
-	Host                string `yaml:"host"`
-	Port                int    `yaml:"port"`
-	Username            string `yaml:"username"`
-	Password            string `yaml:"password"`
-	DbName              string `yaml:"dbname"`
-	IgnoreUnsupportType bool   `yaml:"ignore_unsupport_type"`
+	Host        string `yaml:"host"`
+	Port        int    `yaml:"port"`
+	Username    string `yaml:"username"`
+	Password    string `yaml:"password"`
+	DbName      string `yaml:"dbname"`
+	PackageName string `yaml:"package_name"`
+	ModelPath   string `yaml:"model_path"`
+
+	UpperCaseJson       bool `yaml:"upper_case_json"`
+	IgnoreUnsupportType bool `yaml:"ignore_unsupport_type"`
 }
 
 func NewConfig(confString string, strictMode bool) (*Config, error) {

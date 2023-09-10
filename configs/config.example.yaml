@@ -1,7 +1,10 @@
-  host: host.example.com
-  port: 1521
-  username: username
-  password: password
-  dbname: orcl
-  ignore_unsupport_type: false
-  
+host: host.example.com
+port: 1521
+username: username
+password: password
+dbname: orcl
+package_name: models
+model_path: models
+
+upper_case_json: false
+ignore_unsupport_type: false
