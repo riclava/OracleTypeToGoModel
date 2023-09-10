@@ -4,6 +4,10 @@
 
 1. 安装 `Oracle InstantClient` 参考 [Oracle InstantClient 配置](#oracle-instantclient-配置)
 2. `go mod tidy`
+3. `go build`
+4. `cd configs && cp config.example.yaml config.yaml`
+5. 修改 `configs/config.yaml`
+6. 执行 `oracletypeconverter` 或者 `oracletypeconverter.exe`
 
 ## Oracle InstantClient 配置
 
