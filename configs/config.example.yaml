@@ -1,0 +1,7 @@
+  host: host.example.com
+  port: 1521
+  username: username
+  password: password
+  dbname: orcl
+  ignore_unsupport_type: false
+  
