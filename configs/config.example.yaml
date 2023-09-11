@@ -3,6 +3,8 @@ port: 1521
 username: username
 password: password
 dbname: orcl
+import_sql: false
+template_name: default.go.tpl
 package_name: models
 model_path: models
 

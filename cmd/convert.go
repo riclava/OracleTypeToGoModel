@@ -27,17 +27,30 @@ type TableMeta struct {
 }
 
 type ModelMeta struct {
-	Name     string
-	JsonName string
-	Type     string
+	ColumnName string
+	Name       string
+	JsonName   string
+	Type       string
 }
+
 type Model struct {
 	PackageName string
 	Filename    string
 	Name        string
 	TableName   string
 	ImportTime  bool
+	ImportSql   bool
 	Metas       []ModelMeta
+	// create
+	CombinedFields        string
+	CombinedValues        string
+	CombinedFieldsOnTable string
+	// retrieve
+	CombinedRetrieveKeys   string
+	CombinedRetrieveFields string
+	// update
+	CombinedUpdateFields        string
+	CombinedUpdateFieldsOnTable string
 }
 
 func fatal(err error) {
@@ -87,7 +100,12 @@ func runConvert() {
 	logger.Infof("Found %v tables, start process all tables", len(tables))
 
 	for idx, table := range tables {
-		logger.Infof("Process table %v ...", idx)
+		logger.Infof("Process table [%v, %v] ...", idx, table)
+
+		if table != "FIELD_EXAMPLE" {
+			continue
+		}
+
 		rows, err := db.Query(`SELECT 
 														table_name, 
 														column_id, 
@@ -133,41 +151,62 @@ func runConvert() {
 		var modelMetas []ModelMeta
 		model := &Model{
 			PackageName: conf.PackageName,
-			Filename:    fmt.Sprintf("%s.go", path.Join(conf.ModelPath, strings.ToLower(toCamelCase(metas[0].TableName)))),
+			Filename:    fmt.Sprintf("%s.go", path.Join(conf.ModelPath, strings.ToLower(underscoreToLowerCamel(metas[0].TableName)))),
 			ImportTime:  false,
-			Name:        toPascalCase(metas[0].TableName),
+			Name:        underscoreToUpperCamel(strings.ToLower(metas[0].TableName)),
 			TableName:   table,
 		}
 
-		for jdx, meta := range metas {
-			logger.Infof("Process table %v, field[%v]: %v ...", table, jdx, meta.ColumnName)
+		for _, meta := range metas {
 			jsonName := ""
 			if conf.UpperCaseJson {
-				jsonName = toPascalCase(meta.ColumnName)
+				jsonName = underscoreToUpperCamel(meta.ColumnName)
 			} else {
-				jsonName = toCamelCase(meta.ColumnName)
+				jsonName = underscoreToLowerCamel(meta.ColumnName)
 			}
 			mm := ModelMeta{
-				Name:     toPascalCase(meta.ColumnName),
-				JsonName: jsonName,
-				Type:     "",
+				ColumnName: meta.ColumnName,
+				Name:       strings.ToUpper(meta.ColumnName),
+				JsonName:   jsonName,
+				Type:       "",
 			}
 
 			unsupported := false
 
 			if isFieldString(meta.DataType) {
-				mm.Type = "string"
+				if meta.Nullable == "Y" {
+					mm.Type = "sql.NullString"
+				} else {
+					mm.Type = "string"
+				}
 			} else if isFloat64(meta.DataType, meta.DataPrecision, meta.DataScale) {
-				mm.Type = "float64"
+				if meta.Nullable == "Y" {
+					mm.Type = "sql.NullFloat64"
+				} else {
+					mm.Type = "float64"
+				}
 			} else if isFloat32(meta.DataType) {
-				mm.Type = "float32"
+				if meta.Nullable == "Y" {
+					mm.Type = "sql.NullFloat64"
+				} else {
+					mm.Type = "float32"
+				}
 			} else if isInt64(meta.DataType, meta.DataPrecision, meta.DataScale) {
-				mm.Type = "int64"
+				if meta.Nullable == "Y" {
+					mm.Type = "sql.NullInt64"
+				} else {
+					mm.Type = "int64"
+				}
 			} else if isBytes(meta.DataType) {
 				mm.Type = "[]byte"
 			} else if isTime(meta.DataType) {
-				mm.Type = "time.Time"
-				model.ImportTime = true
+				if meta.Nullable == "Y" {
+					mm.Type = "sql.NullTime"
+				} else {
+					model.ImportTime = true
+					mm.Type = "time.Time"
+				}
+
 			} else {
 				unsupported = true
 				logger.Warnf("Table %v has unsupported data type %v with name %v", table, meta.DataType, meta.ColumnName)
@@ -184,8 +223,44 @@ func runConvert() {
 
 		model.Metas = modelMetas
 
-		templateStr := tpl.GetByFilename("default.tpl")
-		tmpl, err := template.New("default").Parse(templateStr)
+		// calc fields
+
+		combinedFields := []string{}
+		combinedValues := []string{}
+		combinedFieldsOnTable := []string{}
+		combinedRetrieveKeys := []string{}
+		combinedRetrieveFields := []string{}
+		combinedUpdateFields := []string{}
+		combinedUpdateFieldsOnTable := []string{}
+
+		for _, field := range model.Metas {
+			combinedFields = append(combinedFields, fmt.Sprintf("\"%s\"", field.ColumnName))
+			combinedValues = append(combinedValues, fmt.Sprintf(":%s", field.ColumnName))
+			combinedFieldsOnTable = append(combinedFieldsOnTable, fmt.Sprintf("table.%s", field.Name))
+			combinedRetrieveKeys = append(combinedRetrieveKeys, fmt.Sprintf("\"t\".\"%s\"", field.ColumnName))
+			combinedRetrieveFields = append(combinedRetrieveFields, fmt.Sprintf("&r.%s", field.Name))
+			combinedUpdateFields = append(combinedUpdateFields, fmt.Sprintf("\"%s\" = :%s", field.ColumnName, field.ColumnName))
+			combinedUpdateFieldsOnTable = append(combinedUpdateFieldsOnTable, fmt.Sprintf("table.%s", field.Name))
+		}
+
+		model.CombinedFields = strings.Join(combinedFields, ",")
+		model.CombinedValues = strings.Join(combinedValues, ",")
+		model.CombinedFieldsOnTable = strings.Join(combinedFieldsOnTable, ",")
+		model.CombinedRetrieveKeys = strings.Join(combinedRetrieveKeys, ",")
+		model.CombinedRetrieveFields = strings.Join(combinedRetrieveFields, ",")
+		model.CombinedUpdateFields = strings.Join(combinedUpdateFields, ",")
+		model.CombinedUpdateFieldsOnTable = strings.Join(combinedUpdateFieldsOnTable, ",")
+
+		if conf.ImportSql {
+			model.ImportSql = true
+		}
+
+		templateStr := tpl.GetByFilename(conf.TemplateName)
+		tmpl, err := template.New(conf.TemplateName).Funcs(template.FuncMap{
+			"raw": func(s string) template.HTML {
+				return template.HTML(s)
+			},
+		}).Parse(templateStr)
 		if err != nil {
 			fatal(err)
 		}
@@ -257,20 +332,18 @@ func isTime(str string) bool {
 	return str == "DATE" || strings.HasPrefix(str, "TIMESTAMP")
 }
 
-// 转大驼峰（PascalCase）：首字母大写，单词首字母大写
-func toPascalCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '_' || r == '-'
-	})
-	result := ""
-	for _, word := range words {
-		result += strings.Title(word)
+func underscoreToUpperCamel(s string) string {
+	words := strings.Split(s, "_")
+	for i, word := range words {
+		words[i] = strings.Title(word)
 	}
-	return result
+	return strings.Join(words, "")
 }
 
-// 转小驼峰（camelCase）：首字母小写，单词首字母大写
-func toCamelCase(s string) string {
-	pascalCase := toPascalCase(s)
-	return strings.ToLower(pascalCase[:1]) + pascalCase[1:]
+func underscoreToLowerCamel(s string) string {
+	words := strings.Split(s, "_")
+	for i := 1; i < len(words); i++ {
+		words[i] = strings.Title(words[i])
+	}
+	return strings.Join(words, "")
 }

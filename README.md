@@ -65,6 +65,10 @@ ldconfig
 + 复制 `/Users/${USER}/Downloads/instantclient_19_8` 到 `/opt/oracle`，执行命令 `sudo mkdir -p /opt/oracle && sudo cp -rf /Users/${USER}/Downloads/instantclient_19_8 /opt/oracle`
 + 链接到 `/usr/local/lib/`，执行 `ln -s /opt/oracle/instantclient_19_8/libclntsh.dylib /usr/local/lib/`
 
+## recommend
+
++ vscode plugin [https://marketplace.visualstudio.com/items?itemName=jinliming2.vscode-go-template](Go Template Support)
+
 ## 一起共建
 
 如果实现有不正确的地方，欢迎讨论、提交PR
