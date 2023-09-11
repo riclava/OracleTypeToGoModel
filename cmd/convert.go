@@ -102,10 +102,6 @@ func runConvert() {
 	for idx, table := range tables {
 		logger.Infof("Process table [%v, %v] ...", idx, table)
 
-		if table != "FIELD_EXAMPLE" {
-			continue
-		}
-
 		rows, err := db.Query(`SELECT 
 														table_name, 
 														column_id, 
