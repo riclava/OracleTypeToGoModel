@@ -32,7 +32,7 @@ func test(db *sql.DB) {
 
 	// Gets & Get
 	logger.Infof("=======================Gets============================")
-	rows, err := svc.GetPage(1, 10, "f1", "DESC", "", "")
+	rows, total, err := svc.GetPage(1, 10, "f1", "DESC", "", "")
 	if err != nil {
 		logger.Fatalf("%s", err.Error())
 	}
@@ -42,7 +42,7 @@ func test(db *sql.DB) {
 		logger.Fatalf("%s", err.Error())
 	}
 
-	logger.Infof("%v", string(bits))
+	logger.Infof("total = %v, json = %v", total, string(bits))
 	logger.Infof("=======================Get 1============================")
 	row, err := svc.GetOne("f1", "test2")
 	if err != nil {

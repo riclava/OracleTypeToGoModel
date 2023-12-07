@@ -54,11 +54,30 @@ func (svc *{{.Name}}Service) Create(table *{{.Name}}) error {
 }
 
 // GetPage
-func (svc *{{.Name}}Service) GetPage(page, size int, orderField string, order string, queryField, queryText string) ([]*{{.Name}}, error) {
+func (svc *{{.Name}}Service) GetPage(page, size int, orderField string, order string, queryField, queryText string) ([]*{{.Name}}, int, error) {
+	// wheres
 	whereClause := ""
 	if queryField != "" {
 		whereClause += `WHERE ` + queryField + ` = :queryText`
 	}
+
+	countStmt, err := svc.db.Prepare(`SELECT COUNT(*) FROM ` + svc.TableName() + ` ` + whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer countStmt.Close()
+
+	var totalCount int
+	if whereClause != "" {
+		if err := countStmt.QueryRow(queryText).Scan(&totalCount); err != nil {
+			return nil, 0, err
+		}
+	} else {
+		if err := countStmt.QueryRow().Scan(&totalCount); err != nil {
+			return nil, 0, err
+		}
+	}
+
 	stmt, err := svc.db.Prepare(`
 		SELECT *
 		FROM (
@@ -74,7 +93,7 @@ func (svc *{{.Name}}Service) GetPage(page, size int, orderField string, order st
 		WHERE rn > :startId
 	`)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer stmt.Close()
 
@@ -90,7 +109,7 @@ func (svc *{{.Name}}Service) GetPage(page, size int, orderField string, order st
 
 	rows, err := stmt.Query(values...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -99,15 +118,15 @@ func (svc *{{.Name}}Service) GetPage(page, size int, orderField string, order st
 		var r {{.Name}}
 		var rn interface{}
 		if err := rows.Scan({{.CombinedRetrieveFields | raw}}, &rn); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		res = append(res, &r)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return res, nil
+	return res, totalCount, nil
 }
 
 // GetOne
