@@ -1,5 +1,6 @@
 # bin
 *.exe
+oracletypeconverter
 
 # temp
 models
